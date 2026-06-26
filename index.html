@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오늘의 기도 제목</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f8f7f4;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+  .container { width: 100%; max-width: 640px; }
+  .header { margin-bottom: 1.5rem; }
+  .header h1 { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .header p { font-size: 14px; color: #888; }
+  .date-label { font-size: 12px; color: #aaa; margin-bottom: 1rem; min-height: 18px; }
+  .btn-main {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #1a1a1a;
+    font-size: 14px; font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 1.5rem;
+    transition: background 0.15s;
+  }
+  .btn-main:hover { background: #f0f0f0; }
+  .btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-main i { font-size: 18px; color: #3b7dd8; }
+  .cards { display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    display: flex; gap: 12px; align-items: flex-start;
+    animation: fadeIn 0.3s ease forwards;
+    opacity: 0;
+  }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .card-num {
+    min-width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #e8f0fb;
+    color: #3b7dd8;
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .card-body { flex: 1; }
+  .card-title { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; line-height: 1.5; }
+  .card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500;
+  }
+  .badge-cat { background: #e8f0fb; color: #3b7dd8; }
+  .badge-verse { background: #f4f4f4; color: #666; border: 1px solid #e0e0e0; }
+  .card-detail { font-size: 13px; color: #666; margin-top: 6px; line-height: 1.6; }
+  .empty { text-align: center; padding: 2rem; color: #999; font-size: 14px; }
+  .empty i { font-size: 32px; display: block; margin-bottom: 8px; }
+  .error { color: #c0392b; }
+  .notion-key-wrap { margin-bottom: 1.5rem; }
+  .notion-key-wrap label { font-size: 13px; color: #555; display: block; margin-bottom: 6px; }
+  .notion-key-wrap input {
+    width: 100%; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid #ddd; font-size: 13px; color: #1a1a1a;
+    background: #fff;
+  }
+  .notion-key-wrap input:focus { outline: none; border-color: #3b7dd8; }
+  .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🙏 오늘의 기도 제목</h1>
+    <p>기도 중인 항목에서 랜덤으로 5개를 뽑아드립니다.</p>
+  </div>
+
+  <div class="notion-key-wrap">
+    <label>Notion Integration Token</label>
+    <input type="password" id="notionToken" placeholder="secret_xxxxxxxxxxxxxxxx" />
+    <div class="hint">입력한 토큰은 브라우저에만 저장되며 외부로 전송되지 않습니다.</div>
+  </div>
+
+  <button class="btn-main" onclick="fetchPrayers()">
+    <i class="ti ti-refresh"></i>
+    오늘의 기도 5개 뽑기
+  </button>
+
+  <div id="date-label" class="date-label"></div>
+  <div id="cards" class="cards"></div>
+</div>
+
+<script>
+const DB_ID = "11aa979c8fbd4aaf8c0b719f2d998bff";
+const PROXY = "https://api.anthropic.com/v1/messages";
+
+function today() {
+  return new Date().toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+  });
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+async function fetchPrayers() {
+  const token = document.getElementById('notionToken').value.trim();
+  if (!token) {
+    alert('Notion Integration Token을 입력해 주세요.');
+    return;
+  }
+
+  const btn = document.querySelector('.btn-main');
+  const cardsEl = document.getElementById('cards');
+  const dateEl = document.getElementById('date-label');
+
+  btn.disabled = true;
+  cardsEl.innerHTML = '<div class="empty"><i class="ti ti-loader"></i>기도 제목 불러오는 중...</div>';
+  dateEl.textContent = '';
+
+  try {
+    const res = await fetch(`https://api.notion.com/v1/databases/${DB_ID}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'
+      },
+      body: JSON.stringify({
+        filter: {
+          property: '상태',
+          select: { equals: '기도 중' }
+        },
+        page_size: 100
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    if (results.length === 0) {
+      cardsEl.innerHTML = '<div class="empty"><i class="ti ti-mood-empty"></i>기도 중인 항목이 없습니다.<br>노션에서 기도 제목을 추가해 주세요.</div>';
+      btn.disabled = false;
+      return;
+    }
+
+    const prayers = results.map(p => {
+      const props = p.properties;
+      return {
+        title: props['기도 제목']?.title?.[0]?.plain_text || '(제목 없음)',
+        category: props['카테고리']?.select?.name || '',
+        verse: props['관련 성경 구절']?.rich_text?.[0]?.plain_text || '',
+        detail: props['세부 내용']?.rich_text?.[0]?.plain_text || ''
+      };
+    });
+
+    const picked = shuffle(prayers).slice(0, 5);
+    dateEl.textContent = today();
+    cardsEl.innerHTML = '';
+
+    picked.forEach((p, i) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.animationDelay = `${i * 0.07}s`;
+      card.innerHTML = `
+        <div class="card-num">${i + 1}</div>
+        <div class="card-body">
+          <div class="card-title">${p.title}</div>
+          <div class="card-meta">
+            ${p.category ? `<span class="badge badge-cat">${p.category}</span>` : ''}
+            ${p.verse ? `<span class="badge badge-verse">📖 ${p.verse}</span>` : ''}
+          </div>
+          ${p.detail ? `<div class="card-detail">${p.detail}</div>` : ''}
+        </div>`;
+      cardsEl.appendChild(card);
+    });
+
+    localStorage.setItem('notionToken', token);
+
+  } catch (err) {
+    cardsEl.innerHTML = `<div class="empty error"><i class="ti ti-alert-circle"></i>불러오기 실패<br><span style="font-size:12px;color:#aaa">${err.message}</span></div>`;
+  }
+
+  btn.disabled = false;
+}
+
+window.onload = () => {
+  const saved = localStorage.getItem('notionToken');
+  if (saved) document.getElementById('notionToken').value = saved;
+};
+</script>
+</body>
+</html>
